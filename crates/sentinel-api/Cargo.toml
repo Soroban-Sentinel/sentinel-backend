@@ -1,0 +1,27 @@
+[package]
+name = "sentinel-api"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "sentinel-api"
+path = "src/main.rs"
+
+[dependencies]
+sentinel-core = { path = "../sentinel-core" }
+sentinel-fuzzer = { path = "../sentinel-fuzzer" }
+sentinel-verifier = { path = "../sentinel-verifier" }
+sentinel-harness-gen = { path = "../sentinel-harness-gen" }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+sqlx = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }

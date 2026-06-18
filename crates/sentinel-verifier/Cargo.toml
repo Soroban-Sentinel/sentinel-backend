@@ -1,0 +1,13 @@
+[package]
+name = "sentinel-verifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sentinel-core = { path = "../sentinel-core" }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+z3 = { workspace = true }
