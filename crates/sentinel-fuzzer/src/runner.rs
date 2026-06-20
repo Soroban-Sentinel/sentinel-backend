@@ -6,7 +6,7 @@ use sentinel_core::{
     finding::{Finding, FindingKind, FindingSeverity},
 };
 use std::{
-    path::{Path, PathBuf},
+    path::PathBuf,
     time::Duration,
 };
 use tokio::process::Command;

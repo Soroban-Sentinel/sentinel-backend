@@ -6,7 +6,7 @@ mod routes;
 mod state;
 
 use anyhow::Result;
-use axum::{Router, middleware};
+use axum::Router;
 use std::net::SocketAddr;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;

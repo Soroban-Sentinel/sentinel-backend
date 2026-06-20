@@ -4,7 +4,7 @@
 //! dramatically improving early coverage.
 
 use anyhow::Result;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use tracing::info;
 

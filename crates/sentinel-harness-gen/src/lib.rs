@@ -4,7 +4,7 @@
 //! `fuzz/fuzz_targets/<contract>.rs` file that drives libFuzzer against
 //! the Soroban WASM execution environment — no manual harness writing needed.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sentinel_core::config::ContractConfig;
 use std::fmt::Write as FmtWrite;
 
