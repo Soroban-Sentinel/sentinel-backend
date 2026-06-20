@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE runs SET status = ?1, finding_count = ?2, coverage_pct = ?3, completed_at = ?4 WHERE id = ?5",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "6f946bf69c53c2b8ee9aeed192d6f8302875584561ad1031da0280eae4f4cede"
+}

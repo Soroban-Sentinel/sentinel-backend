@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, repo, commit_sha, status, created_at, coverage_pct, finding_count FROM runs ORDER BY created_at DESC LIMIT 50",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "repo",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "commit_sha",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "coverage_pct",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "finding_count",
+        "ordinal": 6,
+        "type_info": "Int64"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "9fdcbea633dfd22e83953ec6ee0227decbb5e97f052ea48b51c5b2f12bbf7b0b"
+}

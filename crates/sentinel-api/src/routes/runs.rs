@@ -9,10 +9,12 @@ use axum::{
     routing::{get, post},
     Json,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
+use sentinel_core::config::SentinelConfig;
 use uuid::Uuid;
 
-use crate::{error::ApiResult, state::AppState};
+use crate::{error::ApiResult, state::AppState, worker};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateRunRequest {
@@ -42,20 +44,34 @@ async fn create_run(
     State(state): State<AppState>,
     Json(req): Json<CreateRunRequest>,
 ) -> ApiResult<(StatusCode, Json<RunResponse>)> {
+    // Decode and parse the config early so we reject bad input before touching the DB.
+    let toml_bytes = BASE64.decode(&req.config_b64)?;
+    let toml_str = String::from_utf8(toml_bytes)?;
+    let config = SentinelConfig::from_toml(&toml_str)
+        .map_err(|e| anyhow::anyhow!("invalid sentinel config: {}", e))?;
+
     let id = Uuid::new_v4().to_string();
 
+    let pr_number = req.pr_number.map(|n| n as i64);
     sqlx::query!(
         "INSERT INTO runs (id, repo, commit_sha, pr_number, status, created_at)
          VALUES (?1, ?2, ?3, ?4, 'queued', datetime('now'))",
         id,
         req.repo,
         req.commit_sha,
-        req.pr_number,
+        pr_number,
     )
     .execute(&state.db)
     .await?;
 
-    // TODO: enqueue background job (tokio task / job queue)
+    // Spawn background job — detached; errors are logged inside execute_run.
+    let run_id = id.clone();
+    tokio::spawn(worker::execute_run(
+        state.db.clone(),
+        run_id,
+        config,
+        state.workspace_root.clone(),
+    ));
 
     Ok((
         StatusCode::CREATED,

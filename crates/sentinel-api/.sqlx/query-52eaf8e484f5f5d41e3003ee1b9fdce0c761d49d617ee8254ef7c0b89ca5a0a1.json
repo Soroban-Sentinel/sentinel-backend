@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO runs (id, repo, commit_sha, pr_number, status, created_at)\n         VALUES (?1, ?2, ?3, ?4, 'queued', datetime('now'))",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "52eaf8e484f5f5d41e3003ee1b9fdce0c761d49d617ee8254ef7c0b89ca5a0a1"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO coverage_snapshots (run_id, contract_name, coverage_pct, unique_edges, snapshot_at)\n                         VALUES (?1, ?2, ?3, ?4, ?5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "79bbec635eb4a082da1a2a9153dd4621f2a888407501871296017d1fc15f1589"
+}

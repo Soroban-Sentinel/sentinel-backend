@@ -4,29 +4,32 @@ mod db;
 mod error;
 mod routes;
 mod state;
+mod worker;
 
 use anyhow::Result;
 use axum::Router;
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialise tracing
     fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("sentinel_api=info".parse()?))
         .init();
 
-    // Database
     let pool = db::connect().await?;
     db::migrate(&pool).await?;
 
-    // App state
-    let state = state::AppState::new(pool);
+    let workspace_root = std::env::var("SENTINEL_WORKSPACE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("/tmp/sentinel-workspace"));
 
-    // Router
+    info!("Workspace root: {}", workspace_root.display());
+
+    let state = state::AppState::new(pool, workspace_root);
+
     let app = Router::new()
         .merge(routes::runs::router())
         .merge(routes::findings::router())

@@ -10,7 +10,7 @@ use sentinel_core::{
 };
 use tracing::{info, warn};
 use uuid::Uuid;
-use z3::{ast::Int, Config, Context, Solver};
+use z3::{ast::{Ast, Int}, Config, Context, Solver};
 
 use crate::invariants::{Invariant, VerificationResult};
 
