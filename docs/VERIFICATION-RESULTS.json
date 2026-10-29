@@ -1,0 +1,71 @@
+{
+  "analyzed_commit": "c34227c678864d73e3618738edad1bba33751639",
+  "validation_date_utc": "2026-10-29",
+  "scope": "Local measured results; native Soroban dynamic tests, not a formal proof",
+  "backend_tests_passed": 20,
+  "format_check": "passed",
+  "strict_clippy": "passed",
+  "cases": [
+    {
+      "interface": "cli",
+      "contract": "vulnerable",
+      "status": "failed",
+      "checks_executed": 3,
+      "requested_invariants": [
+        "balance_conservation",
+        "access_control",
+        "no_overflow"
+      ],
+      "finding_count": 1,
+      "coverage_pct": null,
+      "finding": "Self-transfer amount=1 changed balance from 1 to 2; total supply remained 1",
+      "reproducer": "cd examples/soroban-token/vulnerable && cargo test --locked --lib sentinel_invariants::balance_conservation -- --exact --nocapture"
+    },
+    {
+      "interface": "cli",
+      "contract": "fixed",
+      "status": "passed",
+      "checks_executed": 3,
+      "requested_invariants": [
+        "balance_conservation",
+        "access_control",
+        "no_overflow"
+      ],
+      "finding_count": 0,
+      "coverage_pct": null
+    },
+    {
+      "interface": "api",
+      "contract": "vulnerable",
+      "status": "failed",
+      "checks_executed": 3,
+      "requested_invariants": [
+        "balance_conservation",
+        "access_control",
+        "no_overflow"
+      ],
+      "finding_count": 1,
+      "coverage_pct": null,
+      "finding": "Self-transfer amount=1 changed balance from 1 to 2; total supply remained 1",
+      "reproducer": "cd examples/soroban-token/vulnerable && cargo test --locked --lib sentinel_invariants::balance_conservation -- --exact --nocapture"
+    },
+    {
+      "interface": "api",
+      "contract": "fixed",
+      "status": "passed",
+      "checks_executed": 3,
+      "requested_invariants": [
+        "balance_conservation",
+        "access_control",
+        "no_overflow"
+      ],
+      "finding_count": 0,
+      "coverage_pct": null
+    }
+  ],
+  "http_checks": {
+    "missing_token": 401,
+    "invalid_base64": 400,
+    "mismatched_commit": 400
+  }
+}

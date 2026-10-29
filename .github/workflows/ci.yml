@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y libz3-dev libclang-dev
@@ -30,8 +32,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
+      - name: Restore Cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
@@ -69,3 +72,14 @@ jobs:
         with:
           name: soroban-analysis-evidence
           path: /tmp/sentinel-soroban-evidence.json
+
+      - name: Save Cargo cache even when a diagnostic check fails
+        if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+            examples/soroban-token/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
