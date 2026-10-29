@@ -1,0 +1,12 @@
+[workspace]
+members = ["vulnerable", "fixed"]
+resolver = "2"
+
+[workspace.dependencies]
+soroban-sdk = "=22.0.11"
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0

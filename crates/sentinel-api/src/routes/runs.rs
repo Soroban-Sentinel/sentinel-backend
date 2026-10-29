@@ -60,6 +60,19 @@ async fn create_run(
         .validate()
         .map_err(|e| ApiError::bad_request(e.to_string()))?;
 
+    let (repository, commit) =
+        sentinel_fuzzer::workspace::source_identity(&state.workspace_root).await?;
+    if !repository.eq_ignore_ascii_case(&req.repo) || commit != req.commit_sha {
+        return Err(ApiError::bad_request(
+            "repo and full commit_sha must match the configured workspace origin and HEAD",
+        ));
+    }
+    let permit = state
+        .run_slots
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| ApiError::unavailable("An analysis is already running; retry later"))?;
+
     let id = Uuid::new_v4().to_string();
 
     let pr_number = req
@@ -80,12 +93,10 @@ async fn create_run(
 
     // Spawn background job — detached; errors are logged inside execute_run.
     let run_id = id.clone();
-    tokio::spawn(worker::execute_run(
-        state.db.clone(),
-        run_id,
-        config,
-        state.workspace_root.clone(),
-    ));
+    tokio::spawn(async move {
+        let _permit = permit;
+        worker::execute_run(state.db, run_id, config, state.workspace_root).await;
+    });
 
     Ok((
         StatusCode::CREATED,
@@ -100,7 +111,7 @@ async fn create_run(
 
 async fn list_runs(State(state): State<AppState>) -> ApiResult<Json<Vec<serde_json::Value>>> {
     let rows = sqlx::query!(
-        "SELECT id, repo, commit_sha, status, created_at, coverage_pct, finding_count FROM runs ORDER BY created_at DESC LIMIT 50"
+        "SELECT id, repo, commit_sha, status, created_at, coverage_pct, finding_count, analysis_report, error_message FROM runs ORDER BY created_at DESC LIMIT 50"
     )
     .fetch_all(&state.db)
     .await?;
@@ -116,6 +127,8 @@ async fn list_runs(State(state): State<AppState>) -> ApiResult<Json<Vec<serde_js
                 "created_at": r.created_at,
                 "coverage_pct": r.coverage_pct,
                 "finding_count": r.finding_count,
+        "analysis_report": r.analysis_report.as_deref().and_then(|report| serde_json::from_str::<serde_json::Value>(report).ok()),
+                "error_message": r.error_message,
             })
         })
         .collect();
@@ -128,7 +141,7 @@ async fn get_run(
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let r = sqlx::query!(
-        "SELECT id, repo, commit_sha, status, created_at, coverage_pct, finding_count FROM runs WHERE id = ?1",
+        "SELECT id, repo, commit_sha, status, created_at, coverage_pct, finding_count, analysis_report, error_message FROM runs WHERE id = ?1",
         id
     )
     .fetch_one(&state.db)
@@ -142,5 +155,7 @@ async fn get_run(
         "created_at": r.created_at,
         "coverage_pct": r.coverage_pct,
         "finding_count": r.finding_count,
+        "analysis_report": r.analysis_report.as_deref().and_then(|report| serde_json::from_str::<serde_json::Value>(report).ok()),
+        "error_message": r.error_message,
     })))
 }

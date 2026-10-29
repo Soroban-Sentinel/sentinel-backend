@@ -1,0 +1,8 @@
+version = "1"
+
+[[contracts]]
+name = "vulnerable-token"
+path = "examples/soroban-token/vulnerable"
+analysis = "soroban_tests"
+invariants = ["balance_conservation", "access_control", "no_overflow"]
+fuzz_timeout_secs = 300

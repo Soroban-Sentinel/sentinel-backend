@@ -34,7 +34,7 @@ pub struct Finding {
     pub severity: FindingSeverity,
     /// Human-readable description of the finding.
     pub description: String,
-    /// The reproducer input (hex-encoded bytes for fuzz crashes, SMT model for violations).
+    /// Reproduction command for regressions, or hex JSON input for retained fuzz crashes.
     pub reproducer: Option<String>,
     pub created_at: DateTime<Utc>,
 }

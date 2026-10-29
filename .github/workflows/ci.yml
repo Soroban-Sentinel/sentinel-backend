@@ -6,10 +6,14 @@ on:
   push:
     branches: ["main", "master"]
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     name: Check, Lint & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       SQLX_OFFLINE: "false"
       DATABASE_URL: sqlite:///tmp/sentinel-check.db
@@ -19,10 +23,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y libz3-dev
+        run: sudo apt-get update && sudo apt-get install -y libz3-dev libclang-dev
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt, clippy
 
@@ -33,6 +37,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
+            examples/soroban-token/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Prepare SQLx schema
@@ -42,7 +47,25 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
       - name: Test
-        run: cargo test --all
+        run: cargo test --locked --workspace
+
+      - name: Fetch pinned Soroban fixture dependencies
+        run: cargo fetch --locked --manifest-path examples/soroban-token/Cargo.toml
+
+      - name: Check contract fixture formatting
+        run: cargo fmt --manifest-path examples/soroban-token/Cargo.toml --all -- --check
+
+      - name: Build CI entry points
+        run: cargo build --locked --workspace --bins
+
+      - name: Exercise vulnerable and fixed Soroban contracts through CLI and API
+        run: python3 scripts/check-soroban-demo.py --output /tmp/sentinel-soroban-evidence.json
+
+      - name: Upload reproducible analysis evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-analysis-evidence
+          path: /tmp/sentinel-soroban-evidence.json

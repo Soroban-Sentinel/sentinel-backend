@@ -1,0 +1,8 @@
+.git
+**/target
+**/test_snapshots
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*

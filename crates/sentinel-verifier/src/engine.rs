@@ -129,6 +129,7 @@ mod tests {
     #[test]
     fn refuses_to_claim_a_contract_proof() {
         let c = ContractConfig {
+            analysis: Default::default(),
             name: "token".into(),
             path: "token".into(),
             invariants: vec!["balance_conservation".into()],

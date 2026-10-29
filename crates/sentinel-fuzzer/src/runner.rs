@@ -1,13 +1,12 @@
 //! Spawns and supervises `cargo fuzz run` subprocesses.
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use sentinel_core::{
     config::ContractConfig,
     finding::{Finding, FindingKind, FindingSeverity},
 };
 use std::{path::PathBuf, time::Duration};
 use tokio::process::Command;
-use tokio::time::timeout;
 use tracing::{info, warn};
 use uuid::Uuid;
 
@@ -18,7 +17,7 @@ pub struct FuzzRunner {
 
 pub struct FuzzResult {
     pub findings: Vec<Finding>,
-    /// Edge coverage percentage reported by libFuzzer (0–100).
+    /// Legacy field: zero means unknown; use unique_edges for observed coverage.
     pub coverage_pct: f32,
     /// Total exec/s achieved.
     pub execs_per_sec: f64,
@@ -44,26 +43,81 @@ impl FuzzRunner {
         );
 
         // cargo fuzz run <target> -- -max_total_time=<N> -print_final_stats=1
+        tokio::fs::create_dir_all(
+            self.workspace_root
+                .join("fuzz/artifacts")
+                .join(&target_name),
+        )
+        .await?;
         let mut cmd = Command::new("cargo");
+        cmd.env_remove("SENTINEL_API_TOKEN")
+            .env_remove("DATABASE_URL")
+            .env_remove("GH_TOKEN")
+            .env_remove("GITHUB_TOKEN");
         cmd.current_dir(&self.workspace_root)
             .args([
                 "fuzz",
                 "run",
                 &target_name,
                 "--",
+                &format!(
+                    "-artifact_prefix={}/",
+                    self.workspace_root
+                        .join("fuzz/artifacts")
+                        .join(&target_name)
+                        .display()
+                ),
                 &format!("-max_total_time={}", contract.fuzz_timeout_secs),
                 "-print_final_stats=1",
             ])
             .kill_on_drop(true);
 
-        let output = timeout(duration + Duration::from_secs(30), cmd.output())
-            .await
-            .context("fuzz run timed out")?
-            .context("cargo fuzz failed to spawn")?;
+        if contract.fuzz_iterations > 0 {
+            cmd.arg(format!("-runs={}", contract.fuzz_iterations));
+        }
+        let output = crate::process::output(&mut cmd, duration + Duration::from_secs(30)).await?;
 
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let findings = self.parse_crashes(run_id, contract, &stderr);
+        let mut findings = self.parse_crashes(run_id, contract, &stderr);
         validate_exit(output.status.success(), &findings, &stderr)?;
+        anyhow::ensure!(
+            !findings.is_empty()
+                || stderr.lines().any(|line| line
+                    .strip_prefix("stat::number_of_executed_units:")
+                    .and_then(|n| n.trim().parse::<u64>().ok())
+                    .is_some_and(|n| n > 0)),
+            "fuzz command did not report executing any inputs"
+        );
+        // Preserve the actual input before the disposable checkout is deleted.
+        for finding in &mut findings {
+            if let Some(path) = stderr.lines().find_map(|line| {
+                line.split_once("Test unit written to ")
+                    .map(|(_, path)| path.trim())
+            }) {
+                let artifact = self.workspace_root.join(path).canonicalize()?;
+                let root = self.workspace_root.canonicalize()?;
+                anyhow::ensure!(
+                    artifact.starts_with(root) && artifact.is_file(),
+                    "crash artifact escapes workspace"
+                );
+                use tokio::io::AsyncReadExt;
+                let mut data = Vec::new();
+                tokio::fs::File::open(artifact)
+                    .await?
+                    .take(65537)
+                    .read_to_end(&mut data)
+                    .await?;
+                anyhow::ensure!(
+                    data.len() <= 65536,
+                    "crash artifact exceeds 64 KiB retention limit"
+                );
+                let hex: String = data.iter().map(|byte| format!("{byte:02x}")).collect();
+                finding.reproducer = Some(
+                    serde_json::json!({"encoding": "hex", "input": hex, "target": target_name})
+                        .to_string(),
+                );
+            }
+        }
         let coverage_pct = 0.0;
         let unique_edges = parse_edges(&stderr);
         let execs_per_sec = parse_execs(&stderr);
@@ -171,6 +225,7 @@ mod tests {
     #[test]
     fn crash_is_deduplicated_and_keeps_reproducer() {
         let c = ContractConfig {
+            analysis: Default::default(),
             name: "token".into(),
             path: "token".into(),
             invariants: vec![],
@@ -190,6 +245,7 @@ mod tests {
     #[tokio::test]
     async fn missing_workspace_is_an_error() {
         let c = ContractConfig {
+            analysis: Default::default(),
             name: "token".into(),
             path: "token".into(),
             invariants: vec![],

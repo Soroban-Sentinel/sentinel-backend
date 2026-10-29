@@ -431,3 +431,9 @@ FodyWeavers.xsd
 # Rust
 /target/
 sentinel.db
+
+# Nested contract fixtures and runtime evidence
+**/target/
+**/test_snapshots/
+*.db-shm
+*.db-wal

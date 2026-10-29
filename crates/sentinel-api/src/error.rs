@@ -11,7 +11,15 @@ pub struct ApiError(anyhow::Error);
 #[error("{0}")]
 struct BadRequest(String);
 
+#[derive(Debug, thiserror::Error)]
+#[error("{0}")]
+struct Unavailable(String);
+
 impl ApiError {
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self(anyhow::Error::new(Unavailable(message.into())))
+    }
+
     pub fn bad_request(message: impl Into<String>) -> Self {
         Self(anyhow::Error::new(BadRequest(message.into())))
     }
@@ -21,6 +29,8 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = if let Some(error) = self.0.downcast_ref::<BadRequest>() {
             (StatusCode::BAD_REQUEST, error.to_string())
+        } else if let Some(error) = self.0.downcast_ref::<Unavailable>() {
+            (StatusCode::SERVICE_UNAVAILABLE, error.to_string())
         } else if matches!(
             self.0.downcast_ref::<sqlx::Error>(),
             Some(sqlx::Error::RowNotFound)

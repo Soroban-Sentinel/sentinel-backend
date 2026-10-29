@@ -174,6 +174,7 @@ mod tests {
     #[test]
     fn generates_harness_for_token() {
         let cfg = ContractConfig {
+            analysis: Default::default(),
             name: "sentinel-token".into(),
             path: "contracts/token".into(),
             invariants: vec!["balance_conservation".into(), "no_overflow".into()],

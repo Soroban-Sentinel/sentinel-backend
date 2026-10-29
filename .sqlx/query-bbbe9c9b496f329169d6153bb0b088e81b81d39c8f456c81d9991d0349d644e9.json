@@ -1,0 +1,44 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT run_id, contract_name, coverage_pct, unique_edges, snapshot_at\n         FROM coverage_snapshots WHERE contract_name = ?1 ORDER BY snapshot_at ASC",
+  "describe": {
+    "columns": [
+      {
+        "name": "run_id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "contract_name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "coverage_pct",
+        "ordinal": 2,
+        "type_info": "Float"
+      },
+      {
+        "name": "unique_edges",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "snapshot_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "bbbe9c9b496f329169d6153bb0b088e81b81d39c8f456c81d9991d0349d644e9"
+}

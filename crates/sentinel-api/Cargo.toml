@@ -10,8 +10,6 @@ path = "src/main.rs"
 [dependencies]
 sentinel-core = { path = "../sentinel-core" }
 sentinel-fuzzer = { path = "../sentinel-fuzzer" }
-sentinel-verifier = { path = "../sentinel-verifier" }
-sentinel-harness-gen = { path = "../sentinel-harness-gen" }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
@@ -20,7 +18,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 axum = { workspace = true }
-tower = { workspace = true }
+tower = { workspace = true, features = ["util"] }
 tower-http = { workspace = true }
 sqlx = { workspace = true }
 uuid = { workspace = true }

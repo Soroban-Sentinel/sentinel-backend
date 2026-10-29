@@ -1,0 +1,68 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, repo, commit_sha, status, created_at, coverage_pct, finding_count, analysis_report, error_message FROM runs ORDER BY created_at DESC LIMIT 50",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "repo",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "commit_sha",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "created_at",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "coverage_pct",
+        "ordinal": 5,
+        "type_info": "Float"
+      },
+      {
+        "name": "finding_count",
+        "ordinal": 6,
+        "type_info": "Int64"
+      },
+      {
+        "name": "analysis_report",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "error_message",
+        "ordinal": 8,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "74e7303be7fc2e379e6d2f200d3b8c584de646c9af031c2c4ce06d5d552f89ba"
+}

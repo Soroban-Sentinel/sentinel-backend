@@ -23,5 +23,10 @@ sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "sqlite", "migrate
 uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 toml = "0.8"
-wasmtime = "16"
 z3 = "0.12"
+
+[profile.dev]
+debug = 0
+
+[profile.test]
+debug = 0

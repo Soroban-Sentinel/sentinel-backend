@@ -3,13 +3,27 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SentinelConfig {
     pub version: String,
     pub contracts: Vec<ContractConfig>,
 }
 
+/// What evidence this run requests. Full verification remains fail-closed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AnalysisMode {
+    #[default]
+    Full,
+    Fuzz,
+    SorobanTests,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ContractConfig {
+    #[serde(default)]
+    pub analysis: AnalysisMode,
     pub name: String,
     pub path: String,
     pub invariants: Vec<String>,
@@ -35,6 +49,10 @@ impl SentinelConfig {
         for c in &self.contracts {
             anyhow::ensure!(
                 !c.name.is_empty()
+                    && c.name
+                        .as_bytes()
+                        .first()
+                        .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
                     && c.name.len() <= 64
                     && c.name
                         .bytes()
@@ -48,6 +66,9 @@ impl SentinelConfig {
             let path = std::path::Path::new(&c.path);
             anyhow::ensure!(
                 !c.path.is_empty()
+                    && c.path
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || b"/_-.".contains(&b))
                     && !path.is_absolute()
                     && path
                         .components()
@@ -57,6 +78,10 @@ impl SentinelConfig {
             anyhow::ensure!(
                 (1..=3600).contains(&c.fuzz_timeout_secs),
                 "fuzz timeout must be 1..=3600 seconds"
+            );
+            anyhow::ensure!(
+                c.fuzz_iterations == 0 || c.analysis == AnalysisMode::Fuzz,
+                "fuzz_iterations is only supported in fuzz mode"
             );
             anyhow::ensure!(
                 !c.invariants.is_empty(),
@@ -90,6 +115,7 @@ mod tests {
         SentinelConfig {
             version: "1".into(),
             contracts: vec![ContractConfig {
+                analysis: Default::default(),
                 name: "token".into(),
                 path: "contracts/token".into(),
                 invariants: vec!["no_overflow".into()],
@@ -99,17 +125,45 @@ mod tests {
         }
     }
     #[test]
+    fn explicit_modes_do_not_silently_downgrade_verification() {
+        let config = SentinelConfig::from_toml(
+            r#"version = "1"
+[[contracts]]
+name = "token"
+path = "token"
+invariants = ["no_overflow"]
+"#,
+        )
+        .unwrap();
+        assert_eq!(config.contracts[0].analysis, AnalysisMode::Full);
+        let unknown = r#"version = "1"
+[[contracts]]
+name = "token"
+path = "token"
+invariants = ["no_overflow"]
+analysis = "pretend_proof"
+"#;
+        assert!(SentinelConfig::from_toml(unknown).is_err());
+    }
+    #[test]
     fn accepts_valid_config() {
         assert!(config().validate().is_ok());
     }
     #[test]
     fn rejects_unsafe_names_and_paths() {
-        for name in ["../escape", "", "a/b", "token\ncode"] {
+        for name in ["../escape", "", "a/b", "token\ncode", "--help"] {
             let mut c = config();
             c.contracts[0].name = name.into();
             assert!(c.validate().is_err());
         }
-        for path in ["../escape", "/tmp/token", "contracts/../token", ""] {
+        for path in [
+            "../escape",
+            "/tmp/token",
+            "contracts/../token",
+            "",
+            "token;echo",
+            "token\ncode",
+        ] {
             let mut c = config();
             c.contracts[0].path = path.into();
             assert!(c.validate().is_err());

@@ -1,0 +1,8 @@
+version = "1"
+
+[[contracts]]
+name = "fixed-token"
+path = "examples/soroban-token/fixed"
+analysis = "soroban_tests"
+invariants = ["balance_conservation", "access_control", "no_overflow"]
+fuzz_timeout_secs = 300
