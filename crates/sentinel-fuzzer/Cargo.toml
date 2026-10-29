@@ -3,6 +3,10 @@ name = "sentinel-fuzzer"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "sentinel"
+path = "src/bin/sentinel.rs"
+
 [dependencies]
 sentinel-core = { path = "../sentinel-core" }
 anyhow = { workspace = true }
