@@ -1,11 +1,7 @@
 //! Background job processor — executes a queued Sentinel run end-to-end.
 //!
-//! Flow per contract:
-//!   1. Write fuzz harness via sentinel-harness-gen
-//!   2. Run cargo-fuzz subprocess via sentinel-fuzzer (skipped gracefully if unavailable)
-//!   3. Run Z3 invariant checks via sentinel-verifier
-//!   4. Persist findings + coverage snapshot to SQLite
-//! Finally updates the run row with final status, coverage %, and finding count.
+//! Requires a reviewed fuzz target, persists observed crashes and edge counts,
+//! and treats unavailable analysis as an error rather than a successful check.
 
 use anyhow::Result;
 use sentinel_core::{
@@ -16,7 +12,7 @@ use sentinel_fuzzer::runner::FuzzRunner;
 use sentinel_verifier::engine::VerificationEngine;
 use sqlx::SqlitePool;
 use std::path::PathBuf;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 pub async fn execute_run(
@@ -34,7 +30,11 @@ pub async fn execute_run(
 
     match run_pipeline(&db, &run_id, &config, &workspace_root).await {
         Ok((finding_count, coverage_pct)) => {
-            let status = if finding_count > 0 { "failed" } else { "passed" };
+            let status = if finding_count > 0 {
+                "failed"
+            } else {
+                "passed"
+            };
             if let Err(e) = finish_run(&db, &run_id, status, finding_count, coverage_pct).await {
                 error!(run_id = %run_id, error = %e, "Failed to finalize run record");
             } else {
@@ -43,7 +43,9 @@ pub async fn execute_run(
         }
         Err(e) => {
             error!(run_id = %run_id, error = %e, "Run pipeline errored");
-            let _ = set_status(&db, &run_id, "errored").await;
+            let completed_at = chrono::Utc::now().to_rfc3339();
+            let _ = sqlx::query("UPDATE runs SET status = 'errored', completed_at = ?1, finding_count = (SELECT COUNT(*) FROM findings WHERE run_id = ?2) WHERE id = ?2")
+                .bind(completed_at).bind(&run_id).execute(&db).await;
         }
     }
 }
@@ -54,6 +56,7 @@ async fn run_pipeline(
     config: &SentinelConfig,
     workspace_root: &PathBuf,
 ) -> Result<(i64, f64)> {
+    config.validate()?;
     let run_uuid = Uuid::parse_str(run_id)?;
     let mut total_findings: i64 = 0;
     let mut total_coverage: f64 = 0.0;
@@ -61,24 +64,19 @@ async fn run_pipeline(
     for contract in &config.contracts {
         info!(run_id = %run_id, contract = %contract.name, "Processing contract");
 
-        // ── 1. Harness generation ──────────────────────────────────────────
-        match sentinel_harness_gen::generate_harness(contract) {
-            Ok(harness_src) => {
-                let fuzz_dir = workspace_root.join("fuzz").join("fuzz_targets");
-                match tokio::fs::create_dir_all(&fuzz_dir).await {
-                    Err(e) => warn!(run_id = %run_id, error = %e, "Could not create fuzz target dir"),
-                    Ok(_) => {
-                        let target_name = contract.name.replace('-', "_");
-                        let harness_path = fuzz_dir.join(format!("{}.rs", target_name));
-                        match tokio::fs::write(&harness_path, &harness_src).await {
-                            Err(e) => warn!(run_id = %run_id, error = %e, "Could not write harness file"),
-                            Ok(_) => info!(run_id = %run_id, path = %harness_path.display(), "Harness written"),
-                        }
-                    }
-                }
-            }
-            Err(e) => warn!(run_id = %run_id, contract = %contract.name, error = %e, "Harness generation failed"),
-        }
+        // Require a reviewed, contract-specific harness rather than a placeholder.
+        let target = contract.name.replace('-', "_");
+        anyhow::ensure!(
+            workspace_root.join("fuzz/Cargo.toml").is_file(),
+            "missing fuzz/Cargo.toml"
+        );
+        anyhow::ensure!(
+            workspace_root
+                .join("fuzz/fuzz_targets")
+                .join(format!("{target}.rs"))
+                .is_file(),
+            "missing fuzz target: {target}"
+        );
 
         // ── 2. Fuzzing ─────────────────────────────────────────────────────
         let fuzz_findings = {
@@ -88,7 +86,7 @@ async fn run_pipeline(
                     total_coverage += result.coverage_pct as f64;
                     let cov = result.coverage_pct as f64;
                     let snap_at = chrono::Utc::now().to_rfc3339();
-                    let edges: i64 = 0;
+                    let edges = i64::try_from(result.unique_edges)?;
                     sqlx::query!(
                         "INSERT INTO coverage_snapshots (run_id, contract_name, coverage_pct, unique_edges, snapshot_at)
                          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -98,40 +96,12 @@ async fn run_pipeline(
                     .await?;
                     result.findings
                 }
-                Err(e) => {
-                    warn!(
-                        run_id = %run_id,
-                        contract = %contract.name,
-                        error = %e,
-                        "Fuzzer unavailable or failed — recording zero coverage"
-                    );
-                    let snap_at = chrono::Utc::now().to_rfc3339();
-                    let edges: i64 = 0;
-                    let cov: f64 = 0.0;
-                    // Non-fatal: insert a zero-coverage snapshot so the dashboard shows history
-                    let _ = sqlx::query!(
-                        "INSERT INTO coverage_snapshots (run_id, contract_name, coverage_pct, unique_edges, snapshot_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5)",
-                        run_id, contract.name, cov, edges, snap_at
-                    )
-                    .execute(db)
-                    .await;
-                    vec![]
-                }
-            }
-        };
-
-        // ── 3. Formal verification ─────────────────────────────────────────
-        let verif_findings = match VerificationEngine::verify(run_uuid, contract) {
-            Ok(f) => f,
-            Err(e) => {
-                warn!(run_id = %run_id, contract = %contract.name, error = %e, "Verifier error");
-                vec![]
+                Err(e) => return Err(e),
             }
         };
 
         // ── 4. Persist findings ────────────────────────────────────────────
-        let all_findings: Vec<Finding> = fuzz_findings.into_iter().chain(verif_findings).collect();
+        let all_findings: Vec<Finding> = fuzz_findings;
         total_findings += all_findings.len() as i64;
 
         for finding in all_findings {
@@ -148,6 +118,8 @@ async fn run_pipeline(
             .execute(db)
             .await?;
         }
+        // Persist observed fuzz evidence even when formal analysis is unavailable.
+        VerificationEngine::verify(run_uuid, contract)?;
     }
 
     let contract_count = config.contracts.len().max(1) as f64;
@@ -195,5 +167,45 @@ fn severity_str(severity: &FindingSeverity) -> &'static str {
         FindingSeverity::Medium => "medium",
         FindingSeverity::Low => "low",
         FindingSeverity::Info => "info",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn missing_harness_never_passes_and_records_completion() {
+        let db = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        crate::db::migrate(&db).await.unwrap();
+        let id = Uuid::new_v4().to_string();
+        sqlx::query("INSERT INTO runs (id, repo, commit_sha, created_at) VALUES (?, 'test/token', 'abc', datetime('now'))").bind(&id).execute(&db).await.unwrap();
+        let config = SentinelConfig::from_toml(
+            r#"version = "1"
+[[contracts]]
+name = "token"
+path = "contracts/token"
+invariants = ["balance_conservation"]
+"#,
+        )
+        .unwrap();
+        execute_run(
+            db.clone(),
+            id.clone(),
+            config,
+            PathBuf::from("/nonexistent-sentinel-workspace"),
+        )
+        .await;
+        let (status, completed): (String, Option<String>) =
+            sqlx::query_as("SELECT status, completed_at FROM runs WHERE id = ?")
+                .bind(id)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(status, "errored");
+        assert!(completed.is_some());
     }
 }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use sqlx::{SqlitePool, migrate::MigrateDatabase, Sqlite};
+use sqlx::{migrate::MigrateDatabase, Sqlite, SqlitePool};
 use tracing::info;
 
 const DB_URL: &str = "sqlite://sentinel.db";

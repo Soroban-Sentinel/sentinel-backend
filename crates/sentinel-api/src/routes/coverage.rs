@@ -1,10 +1,9 @@
 //! GET /coverage/:contract   — historical coverage snapshots for a contract
 
 use axum::{
-    Router,
     extract::{Path, State},
     routing::get,
-    Json,
+    Json, Router,
 };
 
 use crate::{error::ApiResult, state::AppState};

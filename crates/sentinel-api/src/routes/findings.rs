@@ -2,10 +2,9 @@
 //! GET /findings/:id            — get a single finding
 
 use axum::{
-    Router,
     extract::{Path, State},
     routing::get,
-    Json,
+    Json, Router,
 };
 
 use crate::{error::ApiResult, state::AppState};

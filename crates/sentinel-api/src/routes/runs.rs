@@ -3,18 +3,21 @@
 //! GET  /runs/:id   — get a single run
 
 use axum::{
-    Router,
     extract::{Path, State},
     http::StatusCode,
     routing::{get, post},
-    Json,
+    Json, Router,
 };
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
-use serde::{Deserialize, Serialize};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use sentinel_core::config::SentinelConfig;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{error::ApiResult, state::AppState, worker};
+use crate::{
+    error::{ApiError, ApiResult},
+    state::AppState,
+    worker,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct CreateRunRequest {
@@ -45,14 +48,25 @@ async fn create_run(
     Json(req): Json<CreateRunRequest>,
 ) -> ApiResult<(StatusCode, Json<RunResponse>)> {
     // Decode and parse the config early so we reject bad input before touching the DB.
-    let toml_bytes = BASE64.decode(&req.config_b64)?;
-    let toml_str = String::from_utf8(toml_bytes)?;
+    let toml_bytes = BASE64
+        .decode(&req.config_b64)
+        .map_err(|_| ApiError::bad_request("config_b64 must contain valid base64"))?;
+    let toml_str = String::from_utf8(toml_bytes)
+        .map_err(|_| ApiError::bad_request("config_b64 must decode to UTF-8 text"))?;
     let config = SentinelConfig::from_toml(&toml_str)
-        .map_err(|e| anyhow::anyhow!("invalid sentinel config: {}", e))?;
+        .map_err(|e| ApiError::bad_request(format!("invalid sentinel config: {}", e)))?;
+
+    config
+        .validate()
+        .map_err(|e| ApiError::bad_request(e.to_string()))?;
 
     let id = Uuid::new_v4().to_string();
 
-    let pr_number = req.pr_number.map(|n| n as i64);
+    let pr_number = req
+        .pr_number
+        .map(i64::try_from)
+        .transpose()
+        .map_err(|_| ApiError::bad_request("pr_number exceeds the supported range"))?;
     sqlx::query!(
         "INSERT INTO runs (id, repo, commit_sha, pr_number, status, created_at)
          VALUES (?1, ?2, ?3, ?4, 'queued', datetime('now'))",

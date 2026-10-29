@@ -10,6 +10,9 @@ jobs:
   ci:
     name: Check, Lint & Test
     runs-on: ubuntu-latest
+    env:
+      SQLX_OFFLINE: "false"
+      DATABASE_URL: sqlite:///tmp/sentinel-check.db
 
     steps:
       - name: Checkout
@@ -31,6 +34,9 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Prepare SQLx schema
+        run: python3 scripts/prepare-check-db.py
 
       - name: Format check
         run: cargo fmt --all -- --check

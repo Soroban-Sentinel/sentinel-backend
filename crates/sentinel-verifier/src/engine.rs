@@ -4,60 +4,29 @@
 //! a satisfying assignment. UNSAT means the property holds; SAT gives a counterexample.
 
 use anyhow::Result;
-use sentinel_core::{
-    config::ContractConfig,
-    finding::{Finding, FindingKind, FindingSeverity},
-};
-use tracing::{info, warn};
+use sentinel_core::{config::ContractConfig, finding::Finding};
 use uuid::Uuid;
-use z3::{ast::{Ast, Int}, Config, Context, Solver};
+use z3::{
+    ast::{Ast, Int},
+    Config, Context, Solver,
+};
 
 use crate::invariants::{Invariant, VerificationResult};
 
 pub struct VerificationEngine;
 
 impl VerificationEngine {
-    /// Check all invariants declared in `contract` and return any findings.
-    pub fn verify(run_id: Uuid, contract: &ContractConfig) -> Result<Vec<Finding>> {
-        let mut findings = Vec::new();
+    /// Template equations do not establish properties of the requested contract.
+    pub fn verify(_run_id: Uuid, contract: &ContractConfig) -> Result<Vec<Finding>> {
+        anyhow::bail!(
+            "verification unavailable for '{}': no contract-derived symbolic model",
+            contract.name
+        )
+    }
 
-        for inv_name in &contract.invariants {
-            if let Some(inv) = Invariant::from_str(inv_name) {
-                info!(contract = %contract.name, invariant = %inv_name, "Verifying invariant");
-                let result = Self::check_invariant(&inv);
-                match result {
-                    VerificationResult::Violated { counterexample } => {
-                        warn!(
-                            contract = %contract.name,
-                            invariant = %inv_name,
-                            counterexample = %counterexample,
-                            "Invariant VIOLATED"
-                        );
-                        findings.push(Finding::new(
-                            run_id,
-                            &contract.name,
-                            FindingKind::InvariantViolation,
-                            FindingSeverity::Critical,
-                            format!(
-                                "Invariant '{}' violated: {}. Counterexample: {}",
-                                inv_name,
-                                inv.description(),
-                                counterexample
-                            ),
-                            Some(counterexample),
-                        ));
-                    }
-                    VerificationResult::Holds => {
-                        info!(contract = %contract.name, invariant = %inv_name, "Invariant holds");
-                    }
-                    VerificationResult::Unknown => {
-                        warn!(contract = %contract.name, invariant = %inv_name, "Solver returned unknown");
-                    }
-                }
-            }
-        }
-
-        Ok(findings)
+    /// Educational template evaluation; never a proof about contract code.
+    pub fn check_template(inv: &Invariant) -> VerificationResult {
+        Self::check_invariant(inv)
     }
 
     fn check_invariant(inv: &Invariant) -> VerificationResult {
@@ -75,22 +44,30 @@ impl VerificationEngine {
     /// Prove: for all a, b: i128, a + b does not overflow.
     /// We model this as: ∃ a, b s.t. a + b > i128::MAX  (negation of "no overflow").
     fn check_no_overflow() -> VerificationResult {
-        let cfg = Config::new();
+        let mut cfg = Config::new();
+        cfg.set_timeout_msec(5000);
         let ctx = Context::new(&cfg);
         let solver = Solver::new(&ctx);
 
         let a = Int::new_const(&ctx, "a");
         let b = Int::new_const(&ctx, "b");
-        let max = Int::from_i64(&ctx, i64::MAX); // simplified to i64 for Z3 Int
-
-        // Negation: a + b > MAX  (overflow)
+        let max = Int::from_str(&ctx, &i128::MAX.to_string()).expect("valid i128 bound");
+        let min = Int::from_str(&ctx, &i128::MIN.to_string()).expect("valid i128 bound");
+        for operand in [&a, &b] {
+            solver.assert(&operand.ge(&min));
+            solver.assert(&operand.le(&max));
+        }
+        // Both overflow and underflow, with operands constrained to signed i128.
         let sum = Int::add(&ctx, &[&a, &b]);
-        solver.assert(&sum.gt(&max));
+        solver.assert(&z3::ast::Bool::or(&ctx, &[&sum.gt(&max), &sum.lt(&min)]));
 
         match solver.check() {
             z3::SatResult::Unsat => VerificationResult::Holds,
             z3::SatResult::Sat => {
-                let model = solver.get_model().map(|m| m.to_string()).unwrap_or_default();
+                let model = solver
+                    .get_model()
+                    .map(|m| m.to_string())
+                    .unwrap_or_default();
                 VerificationResult::Violated {
                     counterexample: model,
                 }
@@ -102,7 +79,8 @@ impl VerificationEngine {
     /// Model balance conservation: total_supply == sum(balances).
     /// Negation: ∃ transfer s.t. total_supply ≠ sum(balances) after transfer.
     fn check_balance_conservation() -> VerificationResult {
-        let cfg = Config::new();
+        let mut cfg = Config::new();
+        cfg.set_timeout_msec(5000);
         let ctx = Context::new(&cfg);
         let solver = Solver::new(&ctx);
 
@@ -118,7 +96,7 @@ impl VerificationEngine {
         solver.assert(&bal_b.ge(&zero));
         solver.assert(&amount.gt(&zero));
         solver.assert(&bal_a.ge(&amount)); // transfer is valid
-        // Pre: bal_a + bal_b == total_supply
+                                           // Pre: bal_a + bal_b == total_supply
         solver.assert(&Int::add(&ctx, &[&bal_a, &bal_b])._eq(&total_supply));
 
         // Post-transfer balances
@@ -132,10 +110,46 @@ impl VerificationEngine {
         match solver.check() {
             z3::SatResult::Unsat => VerificationResult::Holds,
             z3::SatResult::Sat => {
-                let model = solver.get_model().map(|m| m.to_string()).unwrap_or_default();
-                VerificationResult::Violated { counterexample: model }
+                let model = solver
+                    .get_model()
+                    .map(|m| m.to_string())
+                    .unwrap_or_default();
+                VerificationResult::Violated {
+                    counterexample: model,
+                }
             }
             z3::SatResult::Unknown => VerificationResult::Unknown,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn refuses_to_claim_a_contract_proof() {
+        let c = ContractConfig {
+            name: "token".into(),
+            path: "token".into(),
+            invariants: vec!["balance_conservation".into()],
+            fuzz_timeout_secs: 1,
+            fuzz_iterations: 0,
+        };
+        assert!(VerificationEngine::verify(Uuid::new_v4(), &c).is_err());
+    }
+    #[test]
+    fn templates_are_separate_from_contract_proofs() {
+        assert!(matches!(
+            VerificationEngine::check_template(&Invariant::BalanceConservation),
+            VerificationResult::Holds
+        ));
+        assert!(matches!(
+            VerificationEngine::check_template(&Invariant::NoOverflow),
+            VerificationResult::Violated { .. }
+        ));
+        assert!(matches!(
+            VerificationEngine::check_template(&Invariant::AccessControl),
+            VerificationResult::Unknown
+        ));
     }
 }

@@ -11,7 +11,7 @@ use axum::Router;
 use std::{net::SocketAddr, path::PathBuf};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
-use tracing_subscriber::{EnvFilter, fmt};
+use tracing_subscriber::{fmt, EnvFilter};
 
 #[tokio::main]
 async fn main() -> Result<()> {

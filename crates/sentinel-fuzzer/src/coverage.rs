@@ -14,7 +14,12 @@ pub struct CoverageSnapshot {
 }
 
 impl CoverageSnapshot {
-    pub fn new(run_id: impl Into<String>, contract_name: impl Into<String>, coverage_pct: f32, unique_edges: u64) -> Self {
+    pub fn new(
+        run_id: impl Into<String>,
+        contract_name: impl Into<String>,
+        coverage_pct: f32,
+        unique_edges: u64,
+    ) -> Self {
         Self {
             run_id: run_id.into(),
             contract_name: contract_name.into(),

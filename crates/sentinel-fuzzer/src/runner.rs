@@ -5,10 +5,7 @@ use sentinel_core::{
     config::ContractConfig,
     finding::{Finding, FindingKind, FindingSeverity},
 };
-use std::{
-    path::PathBuf,
-    time::Duration,
-};
+use std::{path::PathBuf, time::Duration};
 use tokio::process::Command;
 use tokio::time::timeout;
 use tracing::{info, warn};
@@ -25,6 +22,7 @@ pub struct FuzzResult {
     pub coverage_pct: f32,
     /// Total exec/s achieved.
     pub execs_per_sec: f64,
+    pub unique_edges: u64,
 }
 
 impl FuzzRunner {
@@ -65,7 +63,9 @@ impl FuzzRunner {
 
         let stderr = String::from_utf8_lossy(&output.stderr);
         let findings = self.parse_crashes(run_id, contract, &stderr);
-        let coverage_pct = parse_coverage(&stderr);
+        validate_exit(output.status.success(), &findings, &stderr)?;
+        let coverage_pct = 0.0;
+        let unique_edges = parse_edges(&stderr);
         let execs_per_sec = parse_execs(&stderr);
 
         info!(
@@ -79,6 +79,7 @@ impl FuzzRunner {
             findings,
             coverage_pct,
             execs_per_sec,
+            unique_edges,
         })
     }
 
@@ -90,6 +91,8 @@ impl FuzzRunner {
             if line.contains("SUMMARY: libFuzzer: deadly signal")
                 || line.contains("SUMMARY: libFuzzer: timeout")
                 || line.contains("panicked at")
+                || line.contains("ERROR: AddressSanitizer:")
+                || line.contains("ERROR: libFuzzer:")
             {
                 warn!(contract = %contract.name, line = %line, "Fuzz crash detected");
                 findings.push(Finding::new(
@@ -100,6 +103,7 @@ impl FuzzRunner {
                     format!("libFuzzer crash: {}", line.trim()),
                     extract_reproducer(stderr),
                 ));
+                break; // One process crash may produce several matching diagnostic lines.
             }
         }
 
@@ -107,23 +111,29 @@ impl FuzzRunner {
     }
 }
 
-/// Parse `cov: <N>` from libFuzzer stats line and return as percentage.
-fn parse_coverage(stderr: &str) -> f32 {
-    for line in stderr.lines() {
-        if line.starts_with("stat::number_of_executed_units:") {
-            // Simplified — real impl parses ft: edges
-        }
-        if let Some(rest) = line.strip_prefix("cov: ") {
-            if let Ok(v) = rest.split_whitespace().next().unwrap_or("0").parse::<f32>() {
-                return (v / 10000.0 * 100.0).min(100.0);
-            }
-        }
-    }
-    0.0
+fn validate_exit(success: bool, findings: &[Finding], stderr: &str) -> Result<()> {
+    anyhow::ensure!(
+        success || !findings.is_empty(),
+        "cargo fuzz failed without a recognized crash: {}",
+        stderr.chars().take(2000).collect::<String>()
+    );
+    Ok(())
+}
+
+/// libFuzzer reports edge counts, not a percentage of all reachable edges.
+fn parse_edges(stderr: &str) -> u64 {
+    stderr
+        .lines()
+        .filter_map(|line| {
+            let rest = line.split_once("cov:")?.1;
+            rest.split_whitespace().next()?.parse().ok()
+        })
+        .next_back()
+        .unwrap_or(0)
 }
 
 fn parse_execs(stderr: &str) -> f64 {
-    for line in stderr.lines() {
+    for line in stderr.lines().rev() {
         if line.contains("exec/s:") {
             if let Some(part) = line.split("exec/s:").nth(1) {
                 if let Ok(v) = part.split_whitespace().next().unwrap_or("0").parse::<f64>() {
@@ -142,4 +152,53 @@ fn extract_reproducer(stderr: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn parses_real_libfuzzer_progress() {
+        let log = "#2 INITED cov: 12 ft: 13 corp: 1/1b exec/s: 0\n#800 DONE cov: 42 ft: 70 corp: 4/8b exec/s: 100";
+        assert_eq!(parse_edges(log), 42);
+        assert_eq!(parse_edges("error: no such command: fuzz"), 0);
+    }
+    #[test]
+    fn tool_failures_are_not_clean_runs() {
+        assert!(validate_exit(false, &[], "error: no such command: fuzz").is_err());
+        assert!(validate_exit(true, &[], "").is_ok());
+    }
+    #[test]
+    fn crash_is_deduplicated_and_keeps_reproducer() {
+        let c = ContractConfig {
+            name: "token".into(),
+            path: "token".into(),
+            invariants: vec![],
+            fuzz_timeout_secs: 1,
+            fuzz_iterations: 0,
+        };
+        let log = "thread panicked at token.rs:10\nSUMMARY: libFuzzer: deadly signal\nTest unit written to fuzz/artifacts/token/crash-123";
+        let findings = FuzzRunner::new(".").parse_crashes(Uuid::new_v4(), &c, log);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0]
+            .reproducer
+            .as_ref()
+            .unwrap()
+            .contains("crash-123"));
+        assert!(validate_exit(false, &findings, log).is_ok());
+    }
+    #[tokio::test]
+    async fn missing_workspace_is_an_error() {
+        let c = ContractConfig {
+            name: "token".into(),
+            path: "token".into(),
+            invariants: vec![],
+            fuzz_timeout_secs: 1,
+            fuzz_iterations: 0,
+        };
+        assert!(FuzzRunner::new("/nonexistent-sentinel-workspace")
+            .run(Uuid::new_v4(), &c)
+            .await
+            .is_err());
+    }
 }

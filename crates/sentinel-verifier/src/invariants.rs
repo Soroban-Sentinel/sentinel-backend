@@ -20,7 +20,7 @@ pub enum Invariant {
 }
 
 impl Invariant {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_name(s: &str) -> Option<Self> {
         match s {
             "balance_conservation" => Some(Self::BalanceConservation),
             "access_control" => Some(Self::AccessControl),

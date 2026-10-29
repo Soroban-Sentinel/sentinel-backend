@@ -33,7 +33,11 @@ pub struct Run {
 }
 
 impl Run {
-    pub fn new(repo: impl Into<String>, commit_sha: impl Into<String>, pr_number: Option<u64>) -> Self {
+    pub fn new(
+        repo: impl Into<String>,
+        commit_sha: impl Into<String>,
+        pr_number: Option<u64>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             repo: repo.into(),
