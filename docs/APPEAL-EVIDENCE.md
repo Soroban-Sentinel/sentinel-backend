@@ -47,7 +47,7 @@ validation. Ordinary transfers, unauthorized transfers and arithmetic boundaries
 are exercised through the same generated Soroban client in both fixtures.
 
 The JSON report records the analyzed commit and scoped check counts. Consult the
-published verification record alongside this document for results from the actual
+[published verification record](VERIFICATION.md) alongside this document for results from the actual
 run. The workflow source alone is not evidence that GitHub-hosted CI succeeded.
 
 ## Limits that remain explicit

@@ -1,5 +1,5 @@
 {
-  "analyzed_commit": "c34227c678864d73e3618738edad1bba33751639",
+  "analyzed_commit": "b3ee084ed5fe677c2c656cb1d62479e6b1a8fbd0",
   "validation_date_utc": "2026-10-29",
   "scope": "Local measured results; native Soroban dynamic tests, not a formal proof",
   "backend_tests_passed": 20,
@@ -67,5 +67,12 @@
     "missing_token": 401,
     "invalid_base64": 400,
     "mismatched_commit": 400
+  },
+  "hosted_ci": {
+    "status": "completed",
+    "conclusion": "success",
+    "url": "https://github.com/Soroban-Sentinel/sentinel-backend/actions/runs/40869127981",
+    "commit": "b3ee084ed5fe677c2c656cb1d62479e6b1a8fbd0",
+    "artifact": "soroban-analysis-evidence"
   }
 }

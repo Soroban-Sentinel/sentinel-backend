@@ -1,7 +1,7 @@
 # Verification record
 
 On 29 October 2026, implementation commit
-[`c34227c678864d73e3618738edad1bba33751639`](https://github.com/Soroban-Sentinel/sentinel-backend/commit/c34227c678864d73e3618738edad1bba33751639)
+[`b3ee084ed5fe677c2c656cb1d62479e6b1a8fbd0`](https://github.com/Soroban-Sentinel/sentinel-backend/commit/b3ee084ed5fe677c2c656cb1d62479e6b1a8fbd0)
 was verified locally with Rust 1.96.0:
 
 - Backend workspace: 20 tests passed.
@@ -19,9 +19,10 @@ without transient local paths, process IDs or generated run UUIDs. Re-run
 `python3 scripts/check-soroban-demo.py` for a complete fresh report at your current
 Git HEAD. Passing regression tests do not constitute a formal correctness proof.
 
-The [GitHub Actions implementation run](https://github.com/Soroban-Sentinel/sentinel-backend/actions/runs/40868162788)
-is recorded separately from local verification; consult its actual conclusion.
-The workflow uploads the full demonstration JSON as `soroban-analysis-evidence`.
+The [GitHub Actions implementation run](https://github.com/Soroban-Sentinel/sentinel-backend/actions/runs/40869127981) **passed**, including formatting, strict Clippy, all backend tests, both
+contract variants through both entry points, and upload of the
+`soroban-analysis-evidence` JSON artifact. This verifies the published checkout,
+not only the local working directory.
 
 Docker could not be built locally because Docker is not installed. The Dockerfile
 was updated for the current toolchain, offline SQLx metadata and Cargo-based
